@@ -1,0 +1,3 @@
+source "C:/Users/Home/ESP-IDF/components/bootloader/Kconfig.projbuild"
+source "C:/Users/Home/ESP-IDF/components/esptool_py/Kconfig.projbuild"
+source "C:/Users/Home/ESP-IDF/components/partition_table/Kconfig.projbuild"

@@ -1,0 +1,20 @@
+{
+    "project_name":       "bootloader",
+    "project_path":       "C:/Users/Home/ESP-IDF/components/bootloader/subproject",
+    "build_dir":          "C:/Users/Home/Desktop/ESP-IDF/esp32-cam/build/bootloader",
+    "config_file":        "C:/Users/Home/Desktop/ESP-IDF/esp32-cam/sdkconfig",
+    "config_defaults":    "",
+    "app_elf":            "bootloader.elf",
+    "app_bin":            "bootloader.bin",
+    "git_revision":       "v4.1-dirty",
+    "target":             "esp32",
+    "phy_data_partition": "",
+    "monitor_baud" :      "115200",
+    "monitor_toolprefix": "xtensa-esp32-elf-",
+    "config_environment" : {
+        "COMPONENT_KCONFIGS" : "C:/Users/Home/ESP-IDF/components/efuse/Kconfig;C:/Users/Home/ESP-IDF/components/esp32/Kconfig;C:/Users/Home/ESP-IDF/components/esp_common/Kconfig;C:/Users/Home/ESP-IDF/components/log/Kconfig;C:/Users/Home/ESP-IDF/components/spi_flash/Kconfig",
+        "COMPONENT_KCONFIGS_PROJBUILD" : "C:/Users/Home/ESP-IDF/components/bootloader/Kconfig.projbuild;C:/Users/Home/ESP-IDF/components/esptool_py/Kconfig.projbuild;C:/Users/Home/ESP-IDF/components/partition_table/Kconfig.projbuild"
+    },
+    "build_components" : [ "bootloader", "bootloader_support", "efuse", "esp32", "esp_common", "esp_rom", "esptool_py", "log", "main", "micro-ecc", "partition_table", "soc", "spi_flash", "xtensa", "" ],
+    "build_component_paths" : [ "C:/Users/Home/ESP-IDF/components/bootloader", "C:/Users/Home/ESP-IDF/components/bootloader_support", "C:/Users/Home/ESP-IDF/components/efuse", "C:/Users/Home/ESP-IDF/components/esp32", "C:/Users/Home/ESP-IDF/components/esp_common", "C:/Users/Home/ESP-IDF/components/esp_rom", "C:/Users/Home/ESP-IDF/components/esptool_py", "C:/Users/Home/ESP-IDF/components/log", "C:/Users/Home/ESP-IDF/components/bootloader/subproject/main", "C:/Users/Home/ESP-IDF/components/bootloader/subproject/components/micro-ecc", "C:/Users/Home/ESP-IDF/components/partition_table", "C:/Users/Home/ESP-IDF/components/soc", "C:/Users/Home/ESP-IDF/components/spi_flash", "C:/Users/Home/ESP-IDF/components/xtensa", "" ]
+}

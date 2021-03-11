@@ -1,0 +1,5 @@
+{
+	"files.associations": {
+		"sdmmc_host.h": "c"
+	}
+}
