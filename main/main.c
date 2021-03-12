@@ -34,11 +34,14 @@ static const char *TAG = "Camera";
 //wifi_sta相关宏
 #define CONFIG_WIFI_SSID          "ChinaNet-0577"
 #define CONFIG_WIFI_PASSWORD      "80520577"
-#define EXAMPLE_ESP_MAXIMUM_RETRY  3
+#define EXAMPLE_ESP_MAXIMUM_RETRY  3    
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 static int s_retry_num = 0;
+//websocket相关定义
+httpd_handle_t server = NULL;
+httpd_handle_t stream = NULL;
 // WROVER-KIT PIN Map
 #ifdef BOARD_WROVER_KIT
 
@@ -111,7 +114,7 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
 
     .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_SVGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
+    .frame_size = FRAMESIZE_UXGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
 
     .jpeg_quality = 12, //0-63 lower number means higher quality
     .fb_count = 1       //if more than one, i2s runs in continuous mode. Use only with JPEG
@@ -171,7 +174,7 @@ static void init_sdcard()
 
 }
 */
-
+//wifi连接处理函数，获取ip后才能执行其他任务
 static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -194,7 +197,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
     }
 }
 
-void wifi_init_softsta(void)
+void wifi_init_softsta(void)    //wifi连接主函数
 {
   s_wifi_event_group = xEventGroupCreate();
   tcpip_adapter_init();
@@ -246,56 +249,145 @@ void wifi_init_softsta(void)
     vEventGroupDelete(s_wifi_event_group);
 }
 
-static esp_err_t jpg_httpd_handler(httpd_req_t *req)
+const char default_HTML[] = "<!DOCTYPE html>\
+                        <html>\
+                          <body>\
+                            <form method=\"post\">\
+                                <input type=\"text\" name=\"ssid\" value=\"ssid\"/>\
+                                <input type=\"text\" name=\"password\" value=\"password\"/>\
+                                <input type=\"submit\" value=\"send\"/>\
+                            </from>\
+                          </body>\
+                        </html>";
+//websocket网页交互GET
+static esp_err_t httpd_get_html_handler(httpd_req_t *req)
 {
-  camera_fb_t *fb = NULL;
-  esp_err_t res = ESP_OK;
-  size_t fb_len = 0;
-  int64_t fr_start = esp_timer_get_time();
+    httpd_resp_send(req, default_HTML, HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
 
-  fb = esp_camera_fb_get();
-  if (!fb)
-  {
-    ESP_LOGE(TAG, "Camera capture failed");
-    httpd_resp_send_500(req);
-    return ESP_FAIL;
-  }
-  res = httpd_resp_set_type(req, "image/jpeg");
-  if (res == ESP_OK)
-  {
-    res = httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
-  }
-
-  if (res == ESP_OK)
-  {
-    fb_len = fb->len;
-    res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
-  }
-  esp_camera_fb_return(fb);
-  int64_t fr_end = esp_timer_get_time();
-  ESP_LOGI(TAG, "JPG: %uKB %ums", (uint32_t)(fb_len / 1024), (uint32_t)((fr_end - fr_start) / 1000));
-  return res;
+//websocket网页交互POST
+static esp_err_t httpd_post_date_handler(httpd_req_t *req)
+{
+    char content[1024];
+    size_t recv_size = MIN(req->content_len, sizeof(content));
+    int ret = httpd_req_recv(req, content, recv_size);
+    if (ret <= 0) {  
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG,"recv_buf is\n%s",content);
+    /* Send a simple response */
+   // const char resp[] = "URI TEST !!!";
+  //  httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
 }
 
 httpd_uri_t uri_get = {
-    .uri      = "/jpg",
+    .uri      = "/html",
     .method   = HTTP_GET,
-    .handler  = jpg_httpd_handler,
+    .handler  = httpd_get_html_handler,
     .user_ctx = NULL
 };
 
-httpd_handle_t start_webserver(void)
+httpd_uri_t uri_post = {
+    .uri      = "/html",
+    .method   = HTTP_POST,
+    .handler  = httpd_post_date_handler,
+    .user_ctx = NULL
+};
+
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
+static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %d.%06d\r\n\r\n";
+//websocket传输视频流
+static esp_err_t stream_handler(httpd_req_t *req)
+{
+    camera_fb_t *fb = NULL;
+    esp_err_t res = ESP_OK;
+    size_t _jpg_buf_len;
+    uint8_t *_jpg_buf;
+    char *part_buf[128];
+    static int64_t last_frame = 0;
+    if (!last_frame)
+    {
+        last_frame = esp_timer_get_time();
+    }
+
+    res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
+    if (res != ESP_OK)
+    {
+        return res;
+    }
+
+    while (true)
+    {
+        fb = esp_camera_fb_get();
+        if (!fb)
+        {
+            ESP_LOGE(TAG, "Camera capture failed");
+            res = ESP_FAIL;
+            break;
+        }
+        _jpg_buf_len = fb->len;
+        _jpg_buf = fb->buf;
+
+        if (res == ESP_OK)
+        {
+            res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
+        }
+        if (res == ESP_OK)
+        {
+            size_t hlen = snprintf((char *)part_buf, 128, _STREAM_PART, _jpg_buf_len,fb->timestamp.tv_sec,fb->timestamp.tv_usec);
+            res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
+        }
+        if (res == ESP_OK)
+        {
+            res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
+        }
+        esp_camera_fb_return(fb);
+        if (res != ESP_OK)
+        {
+            break;
+        }
+        int64_t fr_end = esp_timer_get_time();
+        int64_t frame_time = fr_end - last_frame;
+        last_frame = fr_end;
+        frame_time /= 1000;
+        ESP_LOGI(TAG, "MJPG: %uKB %ums (%.1ffps)",(uint32_t)(_jpg_buf_len / 1024),(uint32_t)frame_time, 1000.0 / (uint32_t)frame_time);
+    }
+
+    last_frame = 0;
+    return res;
+}
+
+httpd_uri_t stream_uri = {
+    .uri      = "/stream",
+    .method   = HTTP_GET,
+    .handler  = stream_handler,
+    .user_ctx = NULL
+};
+
+void start_webserver(void)
 {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  httpd_handle_t server = NULL;
+
   ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
   if(httpd_start(&server, &config) == ESP_OK)
   {
-    httpd_register_uri_handler(server, &uri_get);  
-    return server; 
+    httpd_register_uri_handler(server, &uri_get); 
+    httpd_register_uri_handler(server, &uri_post);  
   }
-  else
-    return NULL;
+  config.server_port += 1;
+  config.ctrl_port += 1;
+  ESP_LOGI(TAG, "Starting stream on port: '%d'", config.server_port);
+  if(httpd_start(&stream, &config) == ESP_OK)
+  {
+    httpd_register_uri_handler(stream, &stream_uri);  
+  }
 }
 
 void stop_webserver(httpd_handle_t server)
@@ -306,37 +398,13 @@ void stop_webserver(httpd_handle_t server)
     }
 }
 
-static void disconnect_handler(void* arg, esp_event_base_t event_base,int32_t event_id, void* event_data)
-{
-    httpd_handle_t* server = (httpd_handle_t*) arg;
-    if (*server) {
-        ESP_LOGI(TAG, "Stopping webserver");
-        stop_webserver(*server);
-        *server = NULL;
-    }
-}
-
-static void connect_handler(void* arg, esp_event_base_t event_base,int32_t event_id, void* event_data)
-{
-    httpd_handle_t* server = (httpd_handle_t*) arg;
-    if (*server == NULL) {
-        ESP_LOGI(TAG, "Starting webserver");
-        *server = start_webserver();
-    }
-}
-
 void app_main(void)
 {
     //unsigned int i=0;
-    static httpd_handle_t server = NULL;
     ESP_ERROR_CHECK(nvs_flash_init());
     init_camera();
     //init_sdcard();
     wifi_init_softsta();
 
-    //ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &connect_handler, &server));
-    //ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &disconnect_handler, &server));
-
-    server=start_webserver();
-    
+    start_webserver();
 }
