@@ -190,8 +190,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
         ESP_LOGI(TAG,"connect to the AP fail");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "got ip:%s",
-                 ip4addr_ntoa(&event->ip_info.ip));
+        ESP_LOGI(TAG, "got ip:%s",ip4addr_ntoa(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -232,7 +231,6 @@ void wifi_init_softsta(void)    //wifi连接主函数
             pdFALSE,
             portMAX_DELAY);
 
-    
     if (bits & WIFI_CONNECTED_BIT) 
     {
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",CONFIG_WIFI_SSID, CONFIG_WIFI_PASSWORD);
@@ -252,50 +250,106 @@ void wifi_init_softsta(void)    //wifi连接主函数
 const char default_HTML[] = "<!DOCTYPE html>\
                         <html>\
                           <body>\
-                            <form method=\"post\">\
-                                <input type=\"text\" name=\"ssid\" value=\"ssid\"/>\
-                                <input type=\"text\" name=\"password\" value=\"password\"/>\
-                                <input type=\"submit\" value=\"send\"/>\
-                            </from>\
+                            <p align=center><IMG SRC='https://192.168.0.28:81/stream' style='width:300px; transform:rotate(180deg);'></p><br/><br/>\
+                            <p align=center><button style=background-color:lightgrey;width:90px;height:80px onmousedown=getsend('go') onmouseup=getsend('stop') ontouchstart=getsend('go') ontouchend=getsend('stop') ><b>go</b></button> </p>\
+                            <p align=center>\
+                                <button style=background-color:lightgrey;width:90px;height:80px; onmousedown=getsend('left') onmouseup=getsend('stop') ontouchstart=getsend('left') ontouchend=getsend('stop')><b>Left</b></button>\
+                                <button style=background-color:lightgrey;width:90px;height:80px; onmousedown=getsend('stop') onmouseup=getsend('stop') ontouchstart=getsend('stop') ontouchend=getsend('stop')><b>stop</b></button>\
+                                <button style=background-color:lightgrey;width:90px;height:80px onmousedown=getsend('right') onmouseup=getsend('stop') ontouchstart=getsend('right') ontouchend=getsend('stop') ><b>right</b></button> \
+                            </p>\
+                            <p align=center><button style=background-color:lightgrey;width:90px;height:80px; onmousedown=getsend('back') onmouseup=getsend('stop') ontouchstart=getsend('back') ontouchend=getsend('stop')><b>back</b></button></p> \
+                            <script>var xhttp = new XMLHttpRequest();</script>\
+	                        <script>function getsend(arg) { xhttp.open('GET', arg +'?' + new Date().getTime(), true); xhttp.send() } </script>\
                           </body>\
                         </html>";
-//websocket网页交互GET
+//websocket网页初始界面
 static esp_err_t httpd_get_html_handler(httpd_req_t *req)
 {
+    httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, default_HTML, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
-//websocket网页交互POST
-static esp_err_t httpd_post_date_handler(httpd_req_t *req)
+//websocket网页交互
+static esp_err_t httpd_go_handler(httpd_req_t *req)
 {
-    char content[1024];
-    size_t recv_size = MIN(req->content_len, sizeof(content));
-    int ret = httpd_req_recv(req, content, recv_size);
-    if (ret <= 0) {  
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-            httpd_resp_send_408(req);
-        }
-        return ESP_FAIL;
-    }
-    ESP_LOGI(TAG,"recv_buf is\n%s",content);
-    /* Send a simple response */
-   // const char resp[] = "URI TEST !!!";
-  //  httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
-    return ESP_OK;
+    ESP_LOGI(TAG,"go\n");
+
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, "OK", 2);
+}
+
+static esp_err_t httpd_back_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG,"back\n");
+
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, "OK", 2);
+}
+
+static esp_err_t httpd_left_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG,"left\n");
+
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, "OK", 2);
+}
+
+static esp_err_t httpd_right_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG,"right\n");
+    
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, "OK", 2);
+}
+
+static esp_err_t httpd_stop_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG,"stop\n");
+
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, "OK", 2);
 }
 
 httpd_uri_t uri_get = {
-    .uri      = "/html",
+    .uri      = "/",
     .method   = HTTP_GET,
     .handler  = httpd_get_html_handler,
     .user_ctx = NULL
 };
 
-httpd_uri_t uri_post = {
-    .uri      = "/html",
-    .method   = HTTP_POST,
-    .handler  = httpd_post_date_handler,
+httpd_uri_t uri_go = {
+    .uri      = "/go",
+    .method   = HTTP_GET,
+    .handler  = httpd_go_handler,
+    .user_ctx = NULL
+};
+
+httpd_uri_t uri_back = {
+    .uri      = "/back",
+    .method   = HTTP_GET,
+    .handler  = httpd_back_handler,
+    .user_ctx = NULL
+};
+
+httpd_uri_t uri_left = {
+    .uri      = "/left",
+    .method   = HTTP_GET,
+    .handler  = httpd_left_handler,
+    .user_ctx = NULL
+};
+
+httpd_uri_t uri_right = {
+    .uri      = "/right",
+    .method   = HTTP_GET,
+    .handler  = httpd_right_handler,
+    .user_ctx = NULL
+};
+
+httpd_uri_t uri_stop = {
+    .uri      = "/stop",
+    .method   = HTTP_GET,
+    .handler  = httpd_stop_handler,
     .user_ctx = NULL
 };
 
@@ -379,7 +433,11 @@ void start_webserver(void)
   if(httpd_start(&server, &config) == ESP_OK)
   {
     httpd_register_uri_handler(server, &uri_get); 
-    httpd_register_uri_handler(server, &uri_post);  
+    httpd_register_uri_handler(server, &uri_go);  
+    httpd_register_uri_handler(server, &uri_back); 
+    httpd_register_uri_handler(server, &uri_right);  
+    httpd_register_uri_handler(server, &uri_left); 
+    httpd_register_uri_handler(server, &uri_stop);  
   }
   config.server_port += 1;
   config.ctrl_port += 1;
@@ -405,6 +463,6 @@ void app_main(void)
     init_camera();
     //init_sdcard();
     wifi_init_softsta();
-
+    
     start_webserver();
 }

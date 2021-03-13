@@ -1,5 +1,6 @@
 {
 	"files.associations": {
-		"sdmmc_host.h": "c"
+		"sdmmc_host.h": "c",
+		"*.ipp": "c"
 	}
 }
