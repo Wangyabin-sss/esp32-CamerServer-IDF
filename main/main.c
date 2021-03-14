@@ -28,7 +28,7 @@
 #include "esp_camera.h"
 
 //camer相关宏
-static const char *TAG = "Camera";
+static const char *TAG = "Internet Camera";
 #define MOUNT_POINT "/sdcard"
 #define BOARD_ESP32CAM_AITHINKER 1
 //wifi_sta相关宏
@@ -39,6 +39,7 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 static int s_retry_num = 0;
+char server_IP[16]="";
 //websocket相关定义
 httpd_handle_t server = NULL;
 httpd_handle_t stream = NULL;
@@ -114,7 +115,7 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
 
     .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_UXGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
+    .frame_size = FRAMESIZE_SVGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
 
     .jpeg_quality = 12, //0-63 lower number means higher quality
     .fb_count = 1       //if more than one, i2s runs in continuous mode. Use only with JPEG
@@ -190,7 +191,8 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
         ESP_LOGI(TAG,"connect to the AP fail");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "got ip:%s",ip4addr_ntoa(&event->ip_info.ip));
+        strcpy(server_IP,(const char*)ip4addr_ntoa(&event->ip_info.ip));
+        ESP_LOGI(TAG, "got ip:%s",server_IP);
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -247,10 +249,12 @@ void wifi_init_softsta(void)    //wifi连接主函数
     vEventGroupDelete(s_wifi_event_group);
 }
 
-const char default_HTML[] = "<!DOCTYPE html>\
+char *default_HTML="";
+const char *html0 = "<!DOCTYPE html>\
                         <html>\
                           <body>\
-                            <p align=center><IMG SRC='https://192.168.0.28:81/stream' style='width:300px; transform:rotate(180deg);'></p><br/><br/>\
+                            <p align=center><IMG SRC='http://";
+const char *html1 = ":81/stream' style='width:600px; transform:rotate(180deg);'></p><br/><br/>\
                             <p align=center><button style=background-color:lightgrey;width:90px;height:80px onmousedown=getsend('go') onmouseup=getsend('stop') ontouchstart=getsend('go') ontouchend=getsend('stop') ><b>go</b></button> </p>\
                             <p align=center>\
                                 <button style=background-color:lightgrey;width:90px;height:80px; onmousedown=getsend('left') onmouseup=getsend('stop') ontouchstart=getsend('left') ontouchend=getsend('stop')><b>Left</b></button>\
@@ -266,7 +270,12 @@ const char default_HTML[] = "<!DOCTYPE html>\
 static esp_err_t httpd_get_html_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
+    default_HTML = (char *)calloc(strlen(html0)+strlen(html1)+strlen(server_IP)+1,1);
+    strcat(default_HTML,html0);
+    strcat(default_HTML,server_IP);
+    strcat(default_HTML,html1);
     httpd_resp_send(req, default_HTML, HTTPD_RESP_USE_STRLEN);
+    free(default_HTML);
     return ESP_OK;
 }
 
